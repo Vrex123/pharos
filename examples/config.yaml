@@ -1,0 +1,25 @@
+# Example pharos config. Copy to ~/.config/pharos/config.yaml and edit.
+#
+# Rules:
+#   name  - required, unique
+#   host  - required
+#   user  - required
+#   port  - optional, default 22
+#   docker - optional, default true
+#   identity_file - optional, ~ is expanded
+#
+# Auth: existing SSH keys / ssh-agent / ssh config only. No passwords.
+
+servers:
+  - name: prod
+    host: 1.2.3.4
+    port: 22
+    user: root
+    docker: true
+
+  - name: staging
+    host: staging.example.com
+    port: 22
+    user: deploy
+    identity_file: ~/.ssh/id_ed25519
+    docker: true
