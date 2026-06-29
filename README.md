@@ -3,6 +3,7 @@
 [![CI](https://github.com/Vrex123/pharos/actions/workflows/ci.yml/badge.svg)](https://github.com/Vrex123/pharos/actions/workflows/ci.yml)
 [![Release](https://github.com/Vrex123/pharos/actions/workflows/release.yml/badge.svg)](https://github.com/Vrex123/pharos/actions/workflows/release.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Vrex123/pharos)](https://goreportcard.com/report/github.com/Vrex123/pharos)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **A lightweight SSH-based terminal dashboard for Linux servers and Docker containers.**
 
@@ -203,3 +204,6 @@ go test ./...
 go run ./cmd/pharos --config ./examples/config.yaml
 ```
 
+## License
+
+pharos is released under the [MIT License](./LICENSE).
