@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an improvement for pharos
+title: "Feature: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. pharos aims to stay lightweight: single binary, SSH-based, no daemon, no server-side agent.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem would this solve?
+      placeholder: I want to quickly see ... without leaving the TUI.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Are there existing commands, tools, or workarounds you use today?
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Project fit
+      options:
+        - label: This keeps pharos agentless on remote servers.
+        - label: This can work through the local SSH/Docker CLI model.
+        - label: This does not require storing server passwords.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, examples, or related tools.

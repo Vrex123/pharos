@@ -1,0 +1,73 @@
+name: Bug report
+description: Report something that is not working in pharos
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do not include private keys, tokens, real hostnames, or sensitive server details.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+      placeholder: pharos shows the server as offline even though SSH works from my shell.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest set of steps that reproduces the issue.
+      placeholder: |
+        1. Run `pharos --config ...`
+        2. Select server ...
+        3. Press ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include exact error text if available.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: pharos version
+      description: Release version or commit SHA.
+      placeholder: v0.1.0
+  - type: input
+    id: os
+    attributes:
+      label: OS and terminal
+      placeholder: macOS 15 / Ghostty, Ubuntu 24.04 / GNOME Terminal, Windows 11 / Windows Terminal
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - GitHub release binary
+        - go install
+        - Built from source
+        - Other
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: Paste a minimal redacted config. Remove real hostnames, IPs, users, and paths if sensitive.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Add redacted terminal output or screenshots if useful.
