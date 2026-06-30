@@ -44,8 +44,21 @@ checksum:
 changelog:
   use: github
   sort: asc
+  format: "{{ .SHA }} {{ .Message }}{{ with .Logins }} (by {{ . | englishJoin }}){{ end }}"
   filters:
     exclude:
       - '^docs:'
       - '^test:'
       - '^chore:'
+    include:
+      - "^feat:"
+      - "^fix:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
