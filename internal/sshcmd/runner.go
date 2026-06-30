@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -38,10 +40,74 @@ var containerNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 var ErrInvalidContainerName = errors.New("invalid container name")
 
 // ExecRunner is the default Runner backed by the local ssh binary.
-type ExecRunner struct{}
+//
+// controlDir, when non-empty, holds a per-session directory for OpenSSH
+// connection-multiplexing sockets (ControlMaster). It lets a single
+// interactively-authenticated connection (e.g. a password typed once via
+// Connect) be reused by every later non-interactive command, so pharos never
+// sees or stores the password. It is empty on Windows, whose OpenSSH does not
+// support ControlMaster multiplexing.
+type ExecRunner struct {
+	controlDir string
+}
 
-// New returns the default ExecRunner.
-func New() *ExecRunner { return &ExecRunner{} }
+// New returns the default ExecRunner, creating a per-session control directory
+// for connection multiplexing. On Windows (no ControlMaster support) or if the
+// temp dir can't be created, controlDir stays empty and multiplexing is off.
+func New() *ExecRunner {
+	r := &ExecRunner{}
+	if runtime.GOOS == "windows" {
+		return r
+	}
+	if dir, err := os.MkdirTemp("", "pharos-cm-"); err == nil {
+		r.controlDir = dir
+	}
+	return r
+}
+
+// muxArgs returns the ssh connection-multiplexing options, or nil when
+// multiplexing is unavailable (Windows or no control dir). ControlMaster=auto
+// reuses an existing master socket or becomes one; ControlPath uses %C (a short
+// hash of host/port/user) to keep the socket path under the ~104-char Unix
+// socket limit; ControlPersist keeps the master alive briefly after idle.
+func (r *ExecRunner) muxArgs() []string {
+	if r.controlDir == "" {
+		return nil
+	}
+	return []string{
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath=" + filepath.Join(r.controlDir, "%C"),
+		"-o", "ControlPersist=600",
+	}
+}
+
+// MultiplexingEnabled reports whether connection multiplexing is available.
+// When false (Windows), reusing a password-authenticated connection for
+// background polling is not possible.
+func (r *ExecRunner) MultiplexingEnabled() bool { return r.controlDir != "" }
+
+// Disconnect tears down the multiplexed master connection to server, if any.
+// Best-effort: errors (e.g. no master exists) are ignored.
+func (r *ExecRunner) Disconnect(server model.Server) {
+	if r.controlDir == "" {
+		return
+	}
+	args := []string{
+		"-o", "ControlPath=" + filepath.Join(r.controlDir, "%C"),
+		"-O", "exit",
+		"-p", strconv.Itoa(server.Port),
+		target(server),
+	}
+	_ = exec.Command("ssh", args...).Run()
+}
+
+// Close removes the per-session control directory. Call on shutdown after
+// Disconnecting any active masters.
+func (r *ExecRunner) Close() {
+	if r.controlDir != "" {
+		_ = os.RemoveAll(r.controlDir)
+	}
+}
 
 // hintForStderr returns a short, actionable message when ssh stderr indicates a
 // private key it refused to use because its file permissions are too open
@@ -60,14 +126,20 @@ func hintForStderr(stderr string) string {
 	return ""
 }
 
-// baseArgs builds the common ssh arguments for a server. extra is appended
-// after the user@host target (e.g. a remote command or a -t flag goes before).
-func baseArgs(server model.Server) []string {
+// baseArgs builds the common ssh arguments for a server, including connection
+// multiplexing. When batch is true it adds BatchMode=yes, which forbids all
+// interactive prompts (used for background commands so they never hang on a
+// password prompt); interactive callers pass false so ssh can prompt for a
+// password. extra is appended after the user@host target by the caller.
+func (r *ExecRunner) baseArgs(server model.Server, batch bool) []string {
 	args := []string{
 		"-p", strconv.Itoa(server.Port),
-		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=5",
 	}
+	if batch {
+		args = append(args, "-o", "BatchMode=yes")
+	}
+	args = append(args, r.muxArgs()...)
 	if server.IdentityFile != "" {
 		args = append(args, "-i", server.IdentityFile)
 	}
@@ -80,15 +152,15 @@ func target(server model.Server) string {
 }
 
 // runArgs builds the full ssh argument list for a non-interactive command.
-func runArgs(server model.Server, command string) []string {
-	args := baseArgs(server)
+func (r *ExecRunner) runArgs(server model.Server, command string) []string {
+	args := r.baseArgs(server, true)
 	args = append(args, target(server), command)
 	return args
 }
 
 // Run executes command via `ssh ... user@host command`.
 func (r *ExecRunner) Run(ctx context.Context, server model.Server, command string) (string, error) {
-	cmd := exec.CommandContext(ctx, "ssh", runArgs(server, command)...)
+	cmd := exec.CommandContext(ctx, "ssh", r.runArgs(server, command)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -117,9 +189,24 @@ func (r *ExecRunner) InteractiveSSH(server model.Server) error {
 }
 
 // SSHCommand returns the interactive ssh *exec.Cmd wired to the process stdio.
-// Exposed so the TUI can hand it to tea.ExecProcess.
+// Exposed so the TUI can hand it to tea.ExecProcess. BatchMode is off so ssh
+// can prompt for a password; with ControlMaster=auto this connection becomes
+// the reusable master.
 func (r *ExecRunner) SSHCommand(server model.Server) *exec.Cmd {
-	args := append(baseArgs(server), target(server))
+	args := append(r.baseArgs(server, false), target(server))
+	cmd := exec.Command("ssh", args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return cmd
+}
+
+// ConnectCommand returns an interactive ssh command that establishes a
+// multiplexed master connection and backgrounds itself after authentication
+// (-f -N). BatchMode is off so ssh can prompt for a password in the foreground
+// (the TUI must be suspended); once authenticated it forks to the background
+// holding the master socket, and tea.ExecProcess returns. The password is
+// entered into ssh's own prompt and never seen or stored by pharos.
+func (r *ExecRunner) ConnectCommand(server model.Server) *exec.Cmd {
+	args := append(r.baseArgs(server, false), "-f", "-N", target(server))
 	cmd := exec.Command("ssh", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd
@@ -143,7 +230,7 @@ func (r *ExecRunner) ContainerShellCommand(server model.Server, container string
 	}
 	// Prefer sh: alpine/distroless images often lack bash.
 	remote := fmt.Sprintf("docker exec -it %s sh", container)
-	args := append(baseArgs(server), "-t", target(server), remote)
+	args := append(r.baseArgs(server, false), "-t", target(server), remote)
 	cmd := exec.Command("ssh", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd, nil
@@ -167,7 +254,7 @@ func (r *ExecRunner) ContainerLogsCommand(server model.Server, container string)
 		return nil, fmt.Errorf("%w: %q", ErrInvalidContainerName, container)
 	}
 	remote := fmt.Sprintf("docker logs --tail 200 -f %s", container)
-	args := append(baseArgs(server), "-t", target(server), remote)
+	args := append(r.baseArgs(server, false), "-t", target(server), remote)
 	cmd := exec.Command("ssh", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd, nil

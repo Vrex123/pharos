@@ -16,6 +16,7 @@ type keyMap struct {
 	RefreshAll    key.Binding
 	Auto          key.Binding
 	SSH           key.Binding
+	Connect       key.Binding
 	ContainerExec key.Binding
 	ContainerLogs key.Binding
 	Add           key.Binding
@@ -57,6 +58,10 @@ var keys = keyMap{
 		key.WithKeys("s"),
 		key.WithHelp("s", "ssh"),
 	),
+	Connect: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "connect"),
+	),
 	ContainerExec: key.NewBinding(
 		key.WithKeys("e"),
 		key.WithHelp("e", "exec"),
@@ -87,7 +92,7 @@ var keys = keyMap{
 // key groups shown when the respective panel (or bottom tab) is focused. The
 // Processes tab is read-only, so it has no action keys of its own.
 var (
-	serverHintKeys    = []key.Binding{keys.Refresh, keys.RefreshAll, keys.Auto, keys.Add, keys.Edit, keys.Delete, keys.SSH}
+	serverHintKeys    = []key.Binding{keys.Refresh, keys.RefreshAll, keys.Auto, keys.Add, keys.Edit, keys.Delete, keys.Connect, keys.SSH}
 	containerHintKeys = []key.Binding{keys.ContainerExec, keys.ContainerLogs}
 	processHintKeys   = []key.Binding{}
 )

@@ -8,7 +8,10 @@
 #   docker - optional, default true
 #   identity_file - optional, ~ is expanded
 #
-# Auth: existing SSH keys / ssh-agent / ssh config only. No passwords.
+# Auth: existing SSH keys / ssh-agent / ssh config. Password auth is also
+# supported via the 'c' (connect) action; passwords are entered into ssh's own
+# prompt and never stored in this file. (Password servers need 'c' once per
+# session; not available on Windows.)
 
 servers:
   - name: prod

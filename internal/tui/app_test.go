@@ -1,14 +1,18 @@
 package tui
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Vrex123/pharos/internal/config"
 	"github.com/Vrex123/pharos/internal/model"
+	"github.com/Vrex123/pharos/internal/sshcmd"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+var errTest = errors.New("boom")
 
 // sendKey feeds a key string through Update and returns the updated AppModel.
 func sendKey(t *testing.T, m AppModel, s string) AppModel {
@@ -323,6 +327,52 @@ func TestContainerActionsGatedToContainerFocus(t *testing.T) {
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
 	if cmd != nil {
 		t.Errorf("exec should be ignored (no command) when servers focused")
+	}
+}
+
+func TestConnectFinishedMarksConnected(t *testing.T) {
+	servers := []model.Server{{Name: "prod", Host: "h", Port: 22, User: "u", Docker: true}}
+	m := newModel(servers, nil, filepath.Join(t.TempDir(), "c.yaml"))
+	m.width, m.height = 110, 40
+
+	next, cmd := m.Update(connectFinishedMsg{server: servers[0]})
+	m = next.(AppModel)
+	if !m.connected["prod"] {
+		t.Error("successful connect should mark server connected")
+	}
+	if !m.loading["prod"] || cmd == nil {
+		t.Error("successful connect should trigger a refresh")
+	}
+
+	// A failed connect surfaces an error and does not mark the server connected.
+	m2 := newModel(servers, nil, filepath.Join(t.TempDir(), "c.yaml"))
+	next, _ = m2.Update(connectFinishedMsg{server: servers[0], err: errTest})
+	m2 = next.(AppModel)
+	if m2.connected["prod"] {
+		t.Error("failed connect should not mark server connected")
+	}
+	if m2.statusMsg == "" {
+		t.Error("failed connect should set a status message")
+	}
+}
+
+func TestConnectUnavailableShowsStatus(t *testing.T) {
+	servers := []model.Server{{Name: "prod", Host: "h", Port: 22, User: "u", Docker: true}}
+	// A zero-value ExecRunner has no control dir, so multiplexing is disabled
+	// (as on Windows). Connect should report the limitation, not start a command.
+	m := newModel(servers, &sshcmd.ExecRunner{}, filepath.Join(t.TempDir(), "c.yaml"))
+	m.width, m.height = 110, 40
+
+	m2, cmd := m.openConnect()
+	m = m2.(AppModel)
+	if cmd != nil {
+		t.Error("connect with multiplexing off should not start a command")
+	}
+	if !strings.Contains(m.statusMsg, "multiplexing") {
+		t.Errorf("expected multiplexing-unavailable status, got %q", m.statusMsg)
+	}
+	if m.connected["prod"] {
+		t.Error("server should not be marked connected when multiplexing is off")
 	}
 }
 

@@ -52,6 +52,9 @@ type AppModel struct {
 	servers   []model.Server
 	snapshots map[string]model.ServerSnapshot
 	loading   map[string]bool
+	// connected tracks servers with an established multiplexed master
+	// connection (via the Connect action), so masters can be torn down on exit.
+	connected map[string]bool
 
 	selectedServer    int
 	selectedContainer int
@@ -84,12 +87,29 @@ type shellFinishedMsg struct {
 	err    error
 }
 
+// connectFinishedMsg is sent after the interactive Connect command returns
+// (the user entered a password and ssh established the master connection).
+type connectFinishedMsg struct {
+	server model.Server
+	err    error
+}
+
 // Run builds and runs the TUI program for the given config. cfgPath is where
 // changes (added/removed servers) are persisted.
 func Run(cfg *config.Config, cfgPath string) error {
-	m := newModel(cfg.Servers, sshcmd.New(), cfgPath)
+	runner := sshcmd.New()
+	defer runner.Close()
+	m := newModel(cfg.Servers, runner, cfgPath)
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	_, err := p.Run()
+	final, err := p.Run()
+	// Tear down any multiplexed master connections established this session.
+	if fm, ok := final.(AppModel); ok {
+		for _, s := range fm.servers {
+			if fm.connected[s.Name] {
+				runner.Disconnect(s)
+			}
+		}
+	}
 	return err
 }
 
@@ -100,6 +120,7 @@ func newModel(servers []model.Server, runner sshcmd.Runner, cfgPath string) AppM
 		servers:   servers,
 		snapshots: make(map[string]model.ServerSnapshot),
 		loading:   make(map[string]bool),
+		connected: make(map[string]bool),
 		focus:     FocusServers,
 		mode:      modeNormal,
 	}
@@ -170,6 +191,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.statusMsg = ""
 		}
+		m.loading[msg.server.Name] = true
+		return m, m.refreshServerCmd(msg.server)
+
+	case connectFinishedMsg:
+		if msg.err != nil {
+			m.statusMsg = "connect error: " + msg.err.Error()
+			return m, nil
+		}
+		// Master connection established; later commands reuse it. Refresh now.
+		m.connected[msg.server.Name] = true
+		m.statusMsg = ""
 		m.loading[msg.server.Name] = true
 		return m, m.refreshServerCmd(msg.server)
 
@@ -373,6 +405,9 @@ func (m AppModel) handleServerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.SSH):
 		return m.openSSH()
 
+	case key.Matches(msg, keys.Connect):
+		return m.openConnect()
+
 	case key.Matches(msg, keys.Add):
 		m.mode = modeAddForm
 		m.form = newAddForm()
@@ -469,6 +504,30 @@ func (m AppModel) openSSH() (tea.Model, tea.Cmd) {
 	cmd := er.SSHCommand(s)
 	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return shellFinishedMsg{server: s, err: err}
+	})
+}
+
+// openConnect suspends the TUI and establishes a multiplexed master connection
+// to the selected server, letting ssh prompt for a password if needed. The
+// password is entered into ssh's own prompt and is never stored by pharos;
+// later background polls and shells reuse the master socket. Multiplexing is
+// unavailable on Windows, where this only reports that limitation.
+func (m AppModel) openConnect() (tea.Model, tea.Cmd) {
+	s, ok := m.selected()
+	if !ok {
+		return m, nil
+	}
+	er, ok := m.runner.(*sshcmd.ExecRunner)
+	if !ok {
+		return m, nil
+	}
+	if !er.MultiplexingEnabled() {
+		m.statusMsg = "connect unavailable: SSH multiplexing is not supported on this platform; use s for an interactive shell"
+		return m, nil
+	}
+	cmd := er.ConnectCommand(s)
+	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return connectFinishedMsg{server: s, err: err}
 	})
 }
 

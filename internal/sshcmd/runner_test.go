@@ -12,7 +12,7 @@ import (
 
 func TestRunArgsNoIdentity(t *testing.T) {
 	s := model.Server{Name: "prod", Host: "1.2.3.4", Port: 22, User: "root"}
-	args := runArgs(s, "echo ok")
+	args := (&ExecRunner{}).runArgs(s, "echo ok")
 
 	if !hasPair(args, "-p", "22") {
 		t.Errorf("missing -p 22 in %v", args)
@@ -27,13 +27,67 @@ func TestRunArgsNoIdentity(t *testing.T) {
 
 func TestRunArgsWithIdentity(t *testing.T) {
 	s := model.Server{Name: "s", Host: "h", Port: 2222, User: "deploy", IdentityFile: "/home/u/.ssh/id_ed25519"}
-	args := runArgs(s, "uptime")
+	args := (&ExecRunner{}).runArgs(s, "uptime")
 
 	if !hasPair(args, "-p", "2222") {
 		t.Errorf("missing -p 2222 in %v", args)
 	}
 	if !hasPair(args, "-i", "/home/u/.ssh/id_ed25519") {
 		t.Errorf("missing -i identity in %v", args)
+	}
+}
+
+// TestRunArgsBatchMode verifies non-interactive commands forbid prompts
+// (BatchMode=yes) while interactive ones (shell, connect) do not, so ssh can
+// ask for a password.
+func TestRunArgsBatchMode(t *testing.T) {
+	s := model.Server{Name: "s", Host: "h", Port: 22, User: "u"}
+	r := &ExecRunner{}
+
+	if !hasPair(r.runArgs(s, "echo ok"), "-o", "BatchMode=yes") {
+		t.Error("runArgs should set BatchMode=yes")
+	}
+	if hasPair(r.SSHCommand(s).Args, "-o", "BatchMode=yes") {
+		t.Error("interactive SSHCommand should not set BatchMode=yes")
+	}
+	if hasPair(r.ConnectCommand(s).Args, "-o", "BatchMode=yes") {
+		t.Error("ConnectCommand should not set BatchMode=yes")
+	}
+}
+
+// TestMuxArgs verifies multiplexing options are present only when a control
+// directory is configured, and absent otherwise (e.g. Windows).
+func TestMuxArgs(t *testing.T) {
+	s := model.Server{Name: "s", Host: "h", Port: 22, User: "u"}
+
+	off := &ExecRunner{}
+	if hasPair(off.runArgs(s, "echo ok"), "-o", "ControlMaster=auto") {
+		t.Error("no control dir: should not set ControlMaster")
+	}
+	if off.MultiplexingEnabled() {
+		t.Error("no control dir: MultiplexingEnabled should be false")
+	}
+
+	on := &ExecRunner{controlDir: t.TempDir()}
+	args := on.runArgs(s, "echo ok")
+	if !hasPair(args, "-o", "ControlMaster=auto") {
+		t.Errorf("missing ControlMaster=auto in %v", args)
+	}
+	if !on.MultiplexingEnabled() {
+		t.Error("control dir set: MultiplexingEnabled should be true")
+	}
+}
+
+// TestConnectCommand verifies the connect command backgrounds itself (-f) with
+// no remote command (-N) to establish a reusable master.
+func TestConnectCommand(t *testing.T) {
+	s := model.Server{Name: "s", Host: "h", Port: 22, User: "u"}
+	args := (&ExecRunner{}).ConnectCommand(s).Args
+	if !slices.Contains(args, "-f") || !slices.Contains(args, "-N") {
+		t.Errorf("ConnectCommand missing -f/-N: %v", args)
+	}
+	if args[len(args)-1] != "u@h" {
+		t.Errorf("ConnectCommand target tail wrong: %v", args)
 	}
 }
 

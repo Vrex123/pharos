@@ -63,7 +63,7 @@ On remote servers:
 - Linux shell access;
 - Docker CLI access if `docker: true` is enabled for that server.
 
-pharos does not support password authentication. Make sure you can already run `ssh user@host` non-interactively before adding a server.
+Key-based auth (keys / `ssh-agent` / `~/.ssh/config`) works with zero extra steps. Password authentication is also supported via the `c` (connect) action — see [Password authentication](#password-authentication). On Linux/macOS, make sure you can already run `ssh user@host` (with or without a password prompt) before adding a server.
 
 ## Install
 
@@ -151,7 +151,20 @@ Rules:
 
 Added, edited, and removed servers are saved back to the config file immediately. The config directory is created automatically if needed.
 
-**Auth:** pharos uses your existing SSH setup only — keys, `ssh-agent`, and `~/.ssh/config`. There is no password support. Make sure you can already `ssh user@host` non-interactively before adding a server.
+**Auth:** pharos uses your existing SSH setup — keys, `ssh-agent`, and `~/.ssh/config` — and additionally supports password authentication without storing any password (see below).
+
+### Password authentication
+
+pharos never stores, reads, or transmits your password. Instead it relies on OpenSSH **connection multiplexing**:
+
+1. Select the server and press `c` (connect). pharos suspends the TUI and runs `ssh` interactively, so `ssh` itself prompts you for the password.
+2. After you authenticate once, `ssh` keeps a shared master connection open (a control socket in a per-session temp directory).
+3. All later background polling and shells (`s`, `e`, `l`) reuse that master connection — no further prompts, and nothing is persisted. The config file never contains a password.
+4. The master connection is torn down when you quit pharos.
+
+Until you press `c`, a password-only server shows `offline` (background polling runs non-interactively and cannot prompt). This is expected.
+
+> **Windows:** connection multiplexing is not supported by Windows OpenSSH, so password-based background monitoring is unavailable there. `c` will report this; you can still open an interactive shell with `s` (which prompts for the password each time). Key-based auth works as usual.
 
 ## Keybindings
 
@@ -166,6 +179,7 @@ Added, edited, and removed servers are saved back to the config file immediately
 | `a`       | add a server (opens a form)               |
 | `E`       | edit the selected server (opens a form)   |
 | `d`       | delete the selected server (asks to confirm) |
+| `c`       | connect (authenticate once; enables password servers) |
 | `s`       | open an SSH shell on the selected server  |
 | `e`       | open a shell in the selected container    |
 | `l`       | follow logs of the selected container     |
@@ -181,7 +195,7 @@ Press `d` on a selected server and confirm with `y` to remove it.
 
 ## Troubleshooting
 
-- **Server shows `offline`.** pharos runs `ssh … 'echo ok'` with a 3s timeout. Confirm `ssh user@host` works from your shell with no prompts. Password-only servers are not supported.
+- **Server shows `offline`.** pharos runs `ssh … 'echo ok'` with a 3s timeout. Confirm `ssh user@host` works from your shell. For password-only servers, press `c` to authenticate once (see [Password authentication](#password-authentication)); they show `offline` until you do.
 - **(Windows) Server shows `offline` with "Bad permissions" / "private key will be ignored".** Windows OpenSSH refuses private keys whose file permissions are too open and ignores them, so authentication fails. Fix the key's ACL in PowerShell:
 
   ```powershell
@@ -202,7 +216,7 @@ It does not currently provide:
 
 - Kubernetes or Docker Compose management;
 - container start/stop/restart actions;
-- password authentication;
+- storing passwords or other secrets (passwords are entered into ssh's own prompt and never persisted);
 - a web UI or background daemon;
 - metrics history, alerting, or log persistence.
 
