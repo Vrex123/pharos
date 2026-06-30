@@ -86,6 +86,8 @@ pharos --version
 
 Download the `.zip` archive from [Releases](https://github.com/Vrex123/pharos/releases), extract `pharos.exe`, and place it somewhere on your `PATH`.
 
+> Note: Windows OpenSSH ignores private keys whose file permissions are too open. If servers show `offline` with a "Bad permissions" message, see the Windows entry under [Troubleshooting](#troubleshooting).
+
 ### Install with Go
 
 Requires Go 1.24+:
@@ -180,6 +182,13 @@ Press `d` on a selected server and confirm with `y` to remove it.
 ## Troubleshooting
 
 - **Server shows `offline`.** pharos runs `ssh … 'echo ok'` with a 3s timeout. Confirm `ssh user@host` works from your shell with no prompts. Password-only servers are not supported.
+- **(Windows) Server shows `offline` with "Bad permissions" / "private key will be ignored".** Windows OpenSSH refuses private keys whose file permissions are too open and ignores them, so authentication fails. Fix the key's ACL in PowerShell:
+
+  ```powershell
+  icacls "C:\Users\<you>\.ssh\id_rsa" /inheritance:r /grant:r "%USERNAME%:R"
+  ```
+
+  Or load the key into `ssh-agent` (`Start-Service ssh-agent; ssh-add C:\Users\<you>\.ssh\id_rsa`) so the file-permission check is bypassed. Verify with `ssh user@host` from PowerShell before retrying in pharos.
 - **`permission denied … Docker daemon socket`.** Your SSH user cannot reach Docker. Add it to the `docker` group or use a user that can run `docker ps`. The server stays *online*; only the Docker panel shows the error.
 - **Empty Docker panel / "no containers".** Either there are no running containers, or `docker` is not installed on that host. Set `docker: false` for hosts without Docker to skip the calls.
 - **Container shell will not open.** pharos uses `sh` because Alpine-based images often do not include `bash`. Container names are validated against `^[a-zA-Z0-9_.-]+$`.

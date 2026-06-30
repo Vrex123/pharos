@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/Vrex123/pharos/internal/model"
 )
@@ -41,6 +42,23 @@ type ExecRunner struct{}
 
 // New returns the default ExecRunner.
 func New() *ExecRunner { return &ExecRunner{} }
+
+// hintForStderr returns a short, actionable message when ssh stderr indicates a
+// private key it refused to use because its file permissions are too open
+// (common on Windows, where OpenSSH ignores such keys). It returns "" when the
+// signature is absent so callers keep the raw stderr.
+func hintForStderr(stderr string) string {
+	s := strings.ToLower(stderr)
+	if strings.Contains(s, "unprotected private key") ||
+		strings.Contains(s, "bad permissions") ||
+		strings.Contains(s, "are too open") ||
+		strings.Contains(s, "this private key will be ignored") {
+		return "private key permissions too open; ssh ignored the key. " +
+			"On Windows run: icacls \"<key>\" /inheritance:r /grant:r \"%USERNAME%:R\", " +
+			"or add the key to ssh-agent. See the Windows troubleshooting in the README."
+	}
+	return ""
+}
 
 // baseArgs builds the common ssh arguments for a server. extra is appended
 // after the user@host target (e.g. a remote command or a -t flag goes before).
@@ -81,7 +99,9 @@ func (r *ExecRunner) Run(ctx context.Context, server model.Server, command strin
 			return stdout.String(), fmt.Errorf("ssh timeout to %s", server.Name)
 		}
 		msg := stderr.String()
-		if msg == "" {
+		if hint := hintForStderr(msg); hint != "" {
+			msg = hint
+		} else if msg == "" {
 			msg = err.Error()
 		}
 		return stdout.String(), fmt.Errorf("ssh %s: %s", server.Name, msg)

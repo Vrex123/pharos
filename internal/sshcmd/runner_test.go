@@ -108,6 +108,50 @@ func TestValidContainerName(t *testing.T) {
 	}
 }
 
+func TestHintForStderr(t *testing.T) {
+	tests := []struct {
+		name    string
+		stderr  string
+		wantApp bool // expect a non-empty hint
+	}{
+		{
+			name:    "windows bad permissions",
+			stderr:  "Bad permissions. Try removing permissions for user: DESKTOP-3QH61CR\\Val (S-1-5-21-1) on file C:/Users/Val/.ssh/id_rsa.\nThis private key will be ignored.",
+			wantApp: true,
+		},
+		{
+			name:    "unprotected warning",
+			stderr:  "WARNING: UNPROTECTED PRIVATE KEY FILE!\nPermissions for 'id_rsa' are too open.",
+			wantApp: true,
+		},
+		{
+			name:    "unrelated error",
+			stderr:  "ssh: connect to host 1.2.3.4 port 22: Connection timed out",
+			wantApp: false,
+		},
+		{
+			name:    "empty",
+			stderr:  "",
+			wantApp: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hint := hintForStderr(tt.stderr)
+			if tt.wantApp {
+				if hint == "" {
+					t.Fatalf("expected hint, got empty for %q", tt.stderr)
+				}
+				if !strings.Contains(hint, "icacls") {
+					t.Errorf("hint missing icacls guidance: %q", hint)
+				}
+			} else if hint != "" {
+				t.Errorf("expected empty hint, got %q", hint)
+			}
+		})
+	}
+}
+
 func hasPair(args []string, flag, val string) bool {
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == flag && args[i+1] == val {
