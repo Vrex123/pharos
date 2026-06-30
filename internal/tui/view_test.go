@@ -67,7 +67,7 @@ func TestViewFooterHintsFollowFocus(t *testing.T) {
 
 func TestFooterHintsWrapToWidth(t *testing.T) {
 	const width = 40
-	out := footerHints(FocusServers, width)
+	out := footerHints(FocusServers, tabContainers, width)
 	if !strings.Contains(out, "\n") {
 		t.Fatalf("expected hints to wrap at width %d, got single line:\n%s", width, out)
 	}
@@ -78,7 +78,7 @@ func TestFooterHintsWrapToWidth(t *testing.T) {
 	}
 
 	// width <= 0 disables wrapping (single line).
-	if strings.Contains(footerHints(FocusServers, 0), "\n") {
+	if strings.Contains(footerHints(FocusServers, tabContainers, 0), "\n") {
 		t.Errorf("width 0 should not wrap")
 	}
 }

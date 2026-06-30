@@ -17,12 +17,12 @@ One binary. No daemon. No server-side agents. Just your existing `ssh` setup.
                          │ ram:    1.0GB / 4.0GB (25%)                 │
                          │ disk:   42.0GB / 80.0GB (52%)               │
                          └─────────────────────────────────────────────┘
-┌ Docker Containers ──────────────────────────────────────────────────┐
+┌ Docker Containers  Processes ────────────────────────────────────────┐
 │ NAME              IMAGE              STATE     CPU      MEM          │
 │ web               app:latest         running   2.1%     180MiB / 1G  │
 │ postgres          postgres:16        running   0.5%     512MiB / 1G  │
 └──────────────────────────────────────────────────────────────────────┘
-↑/↓ move • tab focus • r refresh • R all • s ssh • e exec • l logs • q quit
+↑/↓ move • tab focus • [/] tab • r refresh • s ssh • e exec • l logs • q quit
 ```
 
 ## Why pharos?
@@ -34,6 +34,7 @@ It is useful for:
 - checking whether servers are online;
 - viewing load average, RAM, and disk usage;
 - seeing running Docker containers and their live CPU / memory usage;
+- inspecting the OS processes eating CPU / RAM on each host (Docker or not);
 - jumping into SSH shells, container shells, or container logs quickly;
 - keeping a small fleet in a simple YAML config that can also be edited from the UI.
 
@@ -43,6 +44,7 @@ pharos is a lightweight alternative to a full panel like Portainer or Cockpit wh
 
 - **Server overview:** online/offline status, load average with CPU-core context, RAM usage, and disk usage.
 - **Docker view:** running containers with `docker stats --no-stream` CPU and memory data.
+- **Processes view:** top OS processes by CPU (PID / user / %CPU / %MEM / TIME+ / command), switchable from the containers tab with `[` / `]`.
 - **Interactive access:** open SSH shells, container shells, and live container logs from the TUI.
 - **Configurable fleet:** add, edit, and remove servers without leaving pharos.
 - **Zero agent setup:** uses your local `ssh` client, keys, `ssh-agent`, and `~/.ssh/config`.
@@ -155,7 +157,8 @@ Added, edited, and removed servers are saved back to the config file immediately
 |-----------|-------------------------------------------|
 | `↑` / `k` | move selection up                         |
 | `↓` / `j` | move selection down                       |
-| `tab`     | switch focus between servers / containers |
+| `tab`     | switch focus between servers and the bottom panel |
+| `[` / `]` | switch the bottom panel between Containers and Processes |
 | `r` / `enter` | refresh the selected server          |
 | `R`       | refresh all servers                       |
 | `a`       | add a server (opens a form)               |
@@ -180,6 +183,7 @@ Press `d` on a selected server and confirm with `y` to remove it.
 - **`permission denied … Docker daemon socket`.** Your SSH user cannot reach Docker. Add it to the `docker` group or use a user that can run `docker ps`. The server stays *online*; only the Docker panel shows the error.
 - **Empty Docker panel / "no containers".** Either there are no running containers, or `docker` is not installed on that host. Set `docker: false` for hosts without Docker to skip the calls.
 - **Container shell will not open.** pharos uses `sh` because Alpine-based images often do not include `bash`. Container names are validated against `^[a-zA-Z0-9_.-]+$`.
+- **Empty Processes tab.** pharos reads processes with `top -bn2` (procps). Hosts with only busybox `top` use a different layout and show an error there; the server stays *online*.
 
 ## What pharos is not
 

@@ -73,8 +73,9 @@ func TestCollectServerOffline(t *testing.T) {
 func TestCollectServerDockerErrorStaysOnline(t *testing.T) {
 	r := &fakeRunner{
 		responses: map[string]string{
-			"echo ok":    "ok\n",
-			StatsCommand: "LOAD=0.1 0.2 0.3\nMem: 1 1 1\nDISK=1 1 1 1% /\n",
+			"echo ok":        "ok\n",
+			StatsCommand:     "LOAD=0.1 0.2 0.3\nMem: 1 1 1\nDISK=1 1 1 1% /\n",
+			ProcessesCommand: topSample,
 		},
 		errs: map[string]error{
 			DockerPSCommand:    errors.New("permission denied while trying to connect to the Docker daemon socket"),
@@ -92,8 +93,9 @@ func TestCollectServerDockerErrorStaysOnline(t *testing.T) {
 
 func TestCollectServerNoDocker(t *testing.T) {
 	r := &fakeRunner{responses: map[string]string{
-		"echo ok":    "ok\n",
-		StatsCommand: "LOAD=0.1 0.2 0.3\nMem: 1 1 1\nDISK=1 1 1 1% /\n",
+		"echo ok":        "ok\n",
+		StatsCommand:     "LOAD=0.1 0.2 0.3\nMem: 1 1 1\nDISK=1 1 1 1% /\n",
+		ProcessesCommand: topSample,
 	}}
 	s := dockerServer()
 	s.Docker = false
@@ -103,5 +105,8 @@ func TestCollectServerNoDocker(t *testing.T) {
 	}
 	if len(snap.Containers) != 0 {
 		t.Errorf("expected no containers, got %+v", snap.Containers)
+	}
+	if len(snap.Processes) != 2 {
+		t.Errorf("expected processes on non-docker host, got %+v", snap.Processes)
 	}
 }
